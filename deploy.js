@@ -83,7 +83,8 @@ function parseArgs(argv) {
   if (!file) {
     console.error(
       "Usage: node deploy.js <artifact-or-bin-file> [--gas N] [--memo TEXT] " +
-        "[--arg-string V] [--arg-address 0.0.x|0x..] [--arg-uint256 N] [--arg-bool true|false]"
+        "[--arg-string V] [--arg-address 0.0.x|0x..] [--arg-uint256 N] [--arg-bool true|false] " +
+        "[--arg-string-array A,B] [--arg-address-array 0.0.x,0.0.y]"
     );
     process.exit(1);
   }
@@ -111,11 +112,28 @@ function parseArgs(argv) {
       case "--arg-bool":
         opts.constructorArgs.push(["addBool", rest[++i] === "true"]);
         break;
+      case "--arg-string-array":
+        opts.constructorArgs.push(["addStringArray", splitCsv(rest[++i])]);
+        break;
+      case "--arg-address-array": {
+        // PowerShell omits an empty quoted argument (""). If this flag is the
+        // final token, or the next token is another flag, encode address[] as [].
+        const next = rest[i + 1];
+        const value = next === undefined || next.startsWith("--") ? "" : rest[++i];
+        opts.constructorArgs.push(["addAddressArray", splitCsv(value).map(toEvmAddress)]);
+        break;
+      }
       default:
         throw new Error(`Unknown argument: ${token}`);
     }
   }
   return opts;
+}
+
+function splitCsv(value) {
+  if (value === undefined) throw new Error("Missing value for array argument.");
+  if (value === "") return [];
+  return value.split(",").map((item) => item.trim());
 }
 
 /** Convert a Hedera 0.0.x id or a 0x EVM address to a solidity address. */
@@ -139,13 +157,22 @@ function buildConstructorParams(argSpecs) {
 /* ------------------------------------------------------------------ */
 
 /** Parse a private key that may be DER-encoded or a raw ECDSA/ED25519 hex string. */
-function parsePrivateKey(raw) {
-  try {
-    return PrivateKey.fromStringDer(raw);
-  } catch {
-    // Fall back to raw ECDSA hex (Hedera Portal "HEX Encoded Private Key").
-    return PrivateKey.fromStringECDSA(raw);
+function parsePrivateKey(raw, configuredType = process.env.HEDERA_OPERATOR_KEY_TYPE) {
+  const trimmed = raw.trim();
+  const value = trimmed.startsWith("0x") ? trimmed.slice(2) : trimmed;
+  // A private key with exactly 32 bytes (64 hex characters) is raw. Check
+  // length first because arbitrary raw bytes can occasionally resemble ASN.1.
+  if (value.length !== 64 && PrivateKey.isDerKey(value)) {
+    return PrivateKey.fromStringDer(value);
   }
+
+  // Raw 32-byte ED25519 and ECDSA keys are both 64 hex characters and cannot
+  // be distinguished by their contents. Hedera Portal accounts use ECDSA by
+  // default; raw ED25519 keys require HEDERA_OPERATOR_KEY_TYPE=ED25519.
+  const type = (configuredType ?? "ECDSA").toUpperCase();
+  if (type === "ECDSA") return PrivateKey.fromStringECDSA(value);
+  if (type === "ED25519") return PrivateKey.fromStringED25519(value);
+  throw new Error("HEDERA_OPERATOR_KEY_TYPE must be ECDSA or ED25519");
 }
 
 function makeTestnetClient() {

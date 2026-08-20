@@ -5,11 +5,17 @@
   "type": "module",
   "main": "deploy.js",
   "scripts": {
+    "compile": "node compile.js",
     "deploy": "node deploy.js",
-    "call": "node call.js"
+    "call": "node call.js",
+    "accounts": "node voting.js accounts",
+    "vote": "node voting.js vote",
+    "results": "node voting.js results",
+    "whoami": "node voting.js whoami"
   },
   "dependencies": {
     "@hashgraph/sdk": "^2.62.0",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "solc": "^0.8.30"
   }
 }
