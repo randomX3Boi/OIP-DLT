@@ -1,4 +1,8 @@
+# Downloaded npm dependencies can be recreated with npm install.
 node_modules/
-tmp/
-.env
 
+# Local scratch files are not part of the submission.
+tmp/
+
+# Contains real Hedera account private keys. Never commit this file.
+.env

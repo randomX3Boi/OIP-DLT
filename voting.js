@@ -11,12 +11,14 @@ import {
 } from "@hashgraph/sdk";
 
 function required(name) {
+  // Fail early with a useful message instead of producing an SDK error later.
   const value = process.env[name];
   if (!value) throw new Error(`Missing ${name} in .env`);
   return value;
 }
 
 function accountConfig(accountNumber = "1") {
+  // Account 1 has no suffix; later accounts use _2, _3, and so on.
   const suffix = accountNumber === "1" ? "" : `_${accountNumber}`;
   return {
     number: accountNumber,
@@ -27,6 +29,7 @@ function accountConfig(accountNumber = "1") {
 }
 
 function parsePrivateKey(raw, configuredType) {
+  // Accept the formats supplied by Hedera Portal: DER or raw hexadecimal.
   const trimmed = raw.trim();
   const value = trimmed.startsWith("0x") ? trimmed.slice(2) : trimmed;
   if (value.length !== 64 && PrivateKey.isDerKey(value)) {
@@ -40,6 +43,7 @@ function parsePrivateKey(raw, configuredType) {
 
 function clientFor(accountNumber = "1") {
   const account = accountConfig(accountNumber);
+  // Each selected account gets its own Testnet client and signs its own calls.
   const client = Client.forTestnet();
   client.setOperator(
     AccountId.fromString(account.id),
@@ -80,6 +84,7 @@ function discoverAccounts() {
 }
 
 async function query(client, contractId, method, params, gas = 100_000, senderId) {
+  // ContractCallQuery reads state and does not create a consensus transaction.
   const request = new ContractCallQuery()
     .setContractId(contractId)
     .setGas(gas)
@@ -89,6 +94,7 @@ async function query(client, contractId, method, params, gas = 100_000, senderId
 }
 
 async function execute(client, contractId, method, params) {
+  // ContractExecuteTransaction changes state and therefore needs a signature.
   const response = await new ContractExecuteTransaction()
     .setContractId(contractId)
     .setGas(250_000)
@@ -100,6 +106,7 @@ async function execute(client, contractId, method, params) {
 }
 
 async function printResults(client, contractId) {
+  // First discover the array length, then query every topic by index.
   const totalResult = await query(client, contractId, "totalVotes");
   const countResult = await query(client, contractId, "topicCount");
   const total = totalResult.getUint256(0).toString();
@@ -117,6 +124,7 @@ async function printResults(client, contractId) {
     console.log(`  ${i}: ${result.getString(0)} - ${result.getUint256(1)} vote(s)`);
   }
 
+  // winner() returns four ABI values: id, name, vote count, and tie flag.
   const winnerResult = await query(client, contractId, "winner", undefined, 200_000);
   const winningId = winnerResult.getUint256(0).toString();
   const winningName = winnerResult.getString(1);
@@ -126,6 +134,7 @@ async function printResults(client, contractId) {
 }
 
 function parseAccountFlag(cliArgs) {
+  // Remove --account N before interpreting the remaining action arguments.
   const index = cliArgs.indexOf("--account");
   const number = index === -1 ? "1" : cliArgs[index + 1];
   if (!number || !/^\d+$/.test(number) || number === "0") {
@@ -136,6 +145,7 @@ function parseAccountFlag(cliArgs) {
 }
 
 function requireEvmAddress(value) {
+  // Numeric 0.0.x IDs are rejected here because an ECDSA alias may differ.
   if (!/^0x[0-9a-fA-F]{40}$/.test(value ?? "")) {
     throw new Error(
       "Use a 20-byte 0x EVM address. For a configured voter, prefer block-account N.",
@@ -146,6 +156,8 @@ function requireEvmAddress(value) {
 
 async function main() {
   const cliArgs = process.argv.slice(2);
+
+  // The accounts action is local: it never submits a Hedera transaction.
   if (cliArgs[0] === "accounts") {
     const accounts = discoverAccounts();
     if (accounts.length === 0) throw new Error("No complete Hedera accounts found in .env");
@@ -159,12 +171,14 @@ async function main() {
 
   const accountNumber = parseAccountFlag(cliArgs);
   const [action, ...args] = cliArgs;
+  // All remaining actions operate on the current deployment stored in .env.
   const contractId = ContractId.fromString(required("VOTING_CONTRACT_ID"));
   const { client, account } = clientFor(accountNumber);
   console.log(`Using account ${account.number}: ${account.id}`);
 
   try {
     if (action === "vote") {
+      // Convert the user's topic index and reject negative/non-integer values.
       const topicId = Number(args[0]);
       if (!Number.isSafeInteger(topicId) || topicId < 0) {
         throw new Error("Usage: node voting.js vote <topic-id> [--account N]");
@@ -176,6 +190,7 @@ async function main() {
         new ContractFunctionParameters().addUint256(topicId),
       );
     } else if (action === "block-account" || action === "unblock-account") {
+      // Resolve a configured account to the same EVM address Solidity checks.
       const targetNumber = args[0];
       if (!/^\d+$/.test(targetNumber ?? "")) {
         throw new Error(`Usage: node voting.js ${action} <configured-account-number>`);
@@ -200,6 +215,7 @@ async function main() {
         new ContractFunctionParameters().addAddress(address).addBool(action === "block"),
       );
     } else if (action === "whoami") {
+      // Set the query sender so whoAmI() can report this account's msg.sender.
       const result = await query(client, contractId, "whoAmI", undefined, 100_000, account.id);
       console.log(`Contract sees caller as: 0x${result.getAddress(0)}`);
       console.log(`Locally derived address:  ${callerAddress(accountNumber)}`);
@@ -215,6 +231,7 @@ async function main() {
       await printResults(client, contractId);
     }
   } finally {
+    // Always release network resources, including after a rejected transaction.
     client.close();
   }
 }
