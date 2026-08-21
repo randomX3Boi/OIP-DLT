@@ -23,6 +23,7 @@ contract SecureTopicVoting {
     error EmptyTopicName(uint256 index);
     error InvalidTopic(uint256 topicId);
     error AccountBlocked();
+    error CannotBlockVotedUser();
     error AlreadyVoted();
     error ZeroAddress();
 
@@ -42,6 +43,7 @@ contract SecureTopicVoting {
     event VoteCast(address indexed voter, uint256 indexed topicId);
     event VoterStateChanged(address indexed voter, VoterState state);
 
+    // This is a check to ensure only admins are able to execute code beyond this func.
     modifier onlyAdmin() {
         // msg.sender is the account calling this function on the EVM.
         if (msg.sender != admin) revert OnlyAdmin();
@@ -66,6 +68,7 @@ contract SecureTopicVoting {
             _setBlocked(initiallyBlocked[i], true);
         }
     }
+<<<<<<< Updated upstream
 
     /// @notice The admin may block or unblock an address that has not voted.
     function setBlocked(address voter, bool blocked) external onlyAdmin {
@@ -73,6 +76,9 @@ contract SecureTopicVoting {
     }
 
     /// @notice Cast one vote for the topic at topicId.
+=======
+    
+>>>>>>> Stashed changes
     function vote(uint256 topicId) external {
         // Check the array boundary before reading or changing contract storage.
         if (topicId >= topics.length) revert InvalidTopic(topicId);
@@ -101,8 +107,12 @@ contract SecureTopicVoting {
         view
         returns (string memory name, uint256 count)
     {
+<<<<<<< Updated upstream
         _requireValidTopic(topicId);
         // A storage reference avoids copying the entire struct unnecessarily.
+=======
+        if (topicId >= topics.length) revert InvalidTopic(topicId);
+>>>>>>> Stashed changes
         Topic storage topic = topics[topicId];
         return (topic.name, topic.voteCount);
     }
@@ -138,18 +148,24 @@ contract SecureTopicVoting {
         return msg.sender;
     }
 
+    function setBlocked(address voter, bool blocked) external onlyAdmin {
+        _setBlocked(voter, blocked);
+    }
+
     function _setBlocked(address voter, bool blocked) private {
         // The zero address cannot represent a usable Hedera voter.
         if (voter == address(0)) revert ZeroAddress();
+<<<<<<< Updated upstream
 
         // Never erase the permanent record that an address has already voted.
         if (voterState[voter] == VoterState.Voted) revert AlreadyVoted();
+=======
+        if (voterState[voter] == VoterState.Voted) revert CannotBlockVotedUser();
+>>>>>>> Stashed changes
         VoterState newState = blocked ? VoterState.Blocked : VoterState.Eligible;
         voterState[voter] = newState;
         emit VoterStateChanged(voter, newState);
     }
 
-    function _requireValidTopic(uint256 topicId) private view {
-        if (topicId >= topics.length) revert InvalidTopic(topicId);
-    }
+
 }
